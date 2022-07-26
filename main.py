@@ -1,46 +1,79 @@
-import os
 import gym
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
+import numpy as np
+import random
 
-# Loading environment
-environment_name = 'CartPole-v0'
-env = gym.make(environment_name)
+#create taxi environment
+env = gym.make('Taxi-v3')
 
+#create a new instance of taxi, and get the initial state
+state = env.reset()
 
+state_size = env.observation_space.n #total number of states (S)
+action_size = env.action_space.n    	#total number of actions (A)
+# initialize a qtalbe iwth 0's for all Q values
+qtable = np.zeros((state_size, action_size))
 
-env.action_space                   # 0: Left, 1: Right
-env.action_space.sample()
-env.observation_space              # List: Cart Position, Cart Velocity, Pole Angle, Pole Angular Velocity
-env.observation_space.sample()
+#hyperparameters to tune
+learning_rate = 0.9
+discount_rate = 0.8
+epsilon = 1.0   	  # probability that our agent will explore
+decay_rate = 0.01     # of epsilon
 
-log_path = os.path.join('Training', 'Logs')       # Make your directories first
+# training variables
+num_episodes = 1000
+max_steps = 99 # per episode
 
-env = gym.make(environment_name)
-env = DummyVecEnv([lambda: env])
-model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=log_path)  #MlpPolicy means using standard nueral network
-model.learn(total_timesteps=20000)
+for episode in range(num_episodes):
 
-PPO_Path = os.path.join('Training', 'Saved Models', 'PPP_Model_Cartpole')
-model.save(PPO_Path)
-del model
-
-model = PPO.load(PPO_Path, env=env)
-
-evaluate_policy(model, env, n_eval_episodes=10, render=True) #n_eval_episodes = 10 means we are using 10 episodes, render = true means that it will be visualized
-#will return tuple, first number is average score, and second is standard deviation
-
-episodes = 5
-for episode in range(1, episodes + 1):
-    obs = env.reset()
+    # reset env
+    state = env.reset()
     done = False
-    score = 0
 
-    while not done:
-        env.render()            # Shows the environment visuall
-        action, _ = model.predict(obs)             #Now using model here, second value is not needed therefore it is assigned to _
-        obs, reward, done, info = env.step(action)      # env.step returns a set of observations, the reward, whether or not its done, and then information(?)
-        score += reward
-    print('Episode: {} Score: {}'.format(episode, score))
-env.close()
+    for s in range(max_steps):
+
+        # exploration-exploitation tradeoff
+        if random.uniform(0,1) < epsilon:
+            # explore
+            action = env.action_space.sample()
+        else:
+            # exploit
+            action = np.argmax(qtable[state,:])
+
+        # take action and observe reward
+        new_state, reward, done, info = env.step(action)
+
+        # Qlearning algorithm: Q(s,a) := Q(s,a) + learning_rate * (reward + discount_rate * max Q(s',a') - Q(s,a))
+        qtable[state,action] = qtable[state, action] + learning_rate * (reward + discount_rate * np.max(qtable[new_state,:]) - qtable[state,action])
+        # ^^^ The above line adds values to the qtable based on possible actions
+
+        # update to our new state
+        state = new_state
+
+        # if done, finish episode
+        if done == True:
+            break
+
+        #decrease epsilon
+        epsilon = np.exp(-decay_rate*episode)
+print(f"Training completed over {num_episodes} episodes")
+input("Press Enter to watch trained agent...")
+print("SLJS:DLFJD")
+#watch trained agent
+state = env.reset()
+done = False
+rewards = 0
+for s in range(max_steps):
+    print(f"TRAINED AGENT")
+    print("Step {}".format(s+1))
+
+    action = np.argmax(qtable[state,:])
+    new_state, reward, done, info = env.step(action)
+    rewards += reward
+    env.render()
+    print(f"score: {rewards}")
+    state = new_state
+
+    if done == True:
+        break
+
+    env.close()
